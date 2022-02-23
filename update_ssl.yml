@@ -1,0 +1,70 @@
+---
+
+- name: Update SSL certificate in target host
+  hosts: "{{ host }}"
+  gather_facts: no
+
+  tasks:
+    # 傳送抓取SSL路徑程式與新憑證至目標伺服器
+    - name: Send find_ssl_path.py and new_cert to target host
+      win_copy:
+        src: "{{ item }}"
+        dest: C:\
+      with_items:
+        - "./script/find_ssl_path.py"
+        - "./files/new_cert"
+
+    # 執行抓取SSL路徑程式
+    - name: Run get ssl path script
+      win_command: python find_ssl_path.py
+      args:
+        chdir: C:\
+
+    # 取回sslpath_info.yml路徑Yaml檔至tmp資料夾
+    - name: Fetch ssl path info file to local
+      fetch:
+        src: C:\sslpath_info.yml
+        dest: ./tmp/sslpath_info.yml
+        flat: yes
+
+    #  讀取sslpath_info.yml
+    - name: Load update_info.yml vars
+      include_vars:
+        file: ./tmp/sslpath_info.yml
+        name: info
+
+    # 更新目標伺服器Slot Service憑證
+    - name: Copy new ssl certificates to target host path
+      win_copy:
+        src: 'C:\new_cert\{{ item[0] }}'
+        dest: '{{ item[1] }}\{{ item[0] }}'
+        remote_src: yes
+      with_nested:
+        - "{{ info.cert }}"
+        - "{{ info.path }}"
+    
+    # 測試使用
+    # - name: Delete test ssl txt
+    #   win_file:
+    #     path: "{{ item[1] }}\\{{ item[0] }}"
+    #     state: absent
+    #   with_nested:
+    #     - "{{ info.cert }}"
+    #     - "{{ info.path }}"
+    
+    # 刪除抓取SSL路徑程式、新憑證、sslpath_info.yml於目標伺服器
+    - name: Delete find_ssl_path.py and sslpath_info.yml in target host
+      win_file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - C:\find_ssl_path.py
+        - C:\sslpath_info.yml
+        - C:\new_cert
+
+    # 刪除tmp內的sslpath_info.yml
+    - name: Delete local update_info.yml
+      local_action: 
+        module: file
+        path: ./tmp/sslpath_info.yml
+        state: absent

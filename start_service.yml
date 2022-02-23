@@ -1,0 +1,33 @@
+---
+
+- name: Start game service
+  hosts: "{{ host }}"
+  gather_facts: no
+
+  tasks:
+    - name: Send check_service.py to target host
+      win_copy:
+        src: "./script/check_service.py"
+        dest: C:\
+
+    - name: Run check_service script
+      win_command: python check_service.py
+      args:
+        chdir: C:\
+      register: result
+
+    - debug: msg="{{result.stdout_lines}}"
+
+    # - name: Start slot game server
+    #   win_service:
+    #     name: "{{ item }}"
+    #     start_mode: auto
+    #     state: started
+    #   with_items:
+    #     - "{{ result.stdout_lines }}"
+
+    - name: Delete check_service.py in target host
+      win_file:
+        path: C:\check_service.py
+        state: absent
+    

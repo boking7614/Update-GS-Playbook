@@ -1,0 +1,99 @@
+---
+
+- name: Update slot game server in target host
+  hosts: "{{ host }}"
+  gather_facts: no
+
+  tasks:
+    # 傳送抓取更新資訊程式與更新檔至目標伺服器
+    - name: Send get_update_info.py to target host
+      win_copy:
+        src: "{{ item }}"
+        dest: C:\
+      with_items:
+        - "./script/get_update_info.py"
+        - "./files/gs_release.7z"
+
+    # 建立更新檔解壓縮檔暫存位置
+    - name: Create gs_release directory
+      win_file: 
+        path: C:\gs_release
+        state: directory
+
+    # 解壓縮更新檔至暫存位置
+    - name: Unzip gs_release.7z to c:\gs_release
+      win_command: '"C:\Program Files\7-Zip\7z.exe" x C:\gs_release.7z -y -oC:\gs_release'
+
+    # 執行建立 update_info.yml程式
+    - name: Run get update info script
+      win_command: python get_update_info.py
+      args:
+        chdir: C:\
+
+    # 取回 update_info.yml至本機tmp資料夾
+    - name: Fetch update info file to local
+      fetch:
+        src: C:\update_info.yml
+        dest: ./tmp/update_info.yml
+        flat: yes
+
+    # 刪除目標主機的 get_update_info.py、update_info.yml、gs_release.7z
+    - name: Delete get_update_info.py and update_info.yml and gs_release.7z in target host
+      win_file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - C:\get_update_info.py
+        - C:\update_info.yml
+        - C:\gs_release.7z
+
+    # 讀取 update_info.yml
+    - name: Load update_info.yml vars
+      include_vars:
+        file: ./tmp/update_info.yml
+        name: info
+
+    # 停止此次需更新的Game Service  
+    - name: Stop slot game server
+      win_service:
+        name: "{{ item }}"
+        start_mode: disabled
+        state: stopped
+      with_items:
+        - "{{ info.service }}"
+
+    # 暫停30秒
+    - name: Sleep 30 seconds
+      pause:
+        seconds: 30 
+
+    # 複製更新檔案至此次更新的目標資料夾
+    - name: Copy Update files to host game-server path
+      win_copy:
+        src: C:\gs_release\
+        dest: "{{ item }}"
+        remote_src: True
+      with_items:
+        - "{{ info.path }}"
+
+    # 啟動此次更新的Game Service  
+    - name: Start slot game server
+      win_service:
+        name: "{{ item }}"
+        start_mode: auto
+        state: started
+      with_items:
+        - "{{ info.service }}"
+
+    # 刪除目標服務器更新檔暫存資料夾
+    - name: Delete C:\gs_release in target host
+      win_file:
+        path: C:\gs_release
+        state: absent
+
+    # 刪除本機 files/update_info.yml
+    # - name: Delete local update_info.yml
+    #   local_action: 
+    #     module: file
+    #     path: ./tmp/update_info.yml
+    #     state: absent
